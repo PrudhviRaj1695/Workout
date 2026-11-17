@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.permission.PermissionController
+import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.launch
 
 private val ReportOrange = Color(0xFFFF8A24)
