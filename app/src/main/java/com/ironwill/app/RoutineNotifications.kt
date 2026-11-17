@@ -31,7 +31,11 @@ object RoutineNotifications {
         saveRoutine(context, wakeHour, sleepHour)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         reminders.forEach { reminder ->
-            val hour = (wakeHour + reminder.afterWakeHours) % 24
+            val hour = when (reminder.id) {
+                104 -> (sleepHour - 6 + 24) % 24
+                105 -> (sleepHour - 1 + 24) % 24
+                else -> (wakeHour + reminder.afterWakeHours) % 24
+            }
             val minute = reminder.extraMinutes
             val calendar = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, hour)
@@ -127,12 +131,37 @@ object RoutineNotifications {
 class RoutineReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!RoutineNotifications.isEnabled(context)) return
-        RoutineNotifications.showReminder(
-            context,
-            intent.getIntExtra("reminder_id", 100),
-            intent.getStringExtra("title") ?: "IRON WILL",
-            intent.getStringExtra("message") ?: "Your next health action is ready."
-        )
+        val id = intent.getIntExtra("reminder_id", 100)
+        val title = intent.getStringExtra("title") ?: "IRON WILL"
+        val baseMessage = intent.getStringExtra("message") ?: "Your next health action is ready."
+        if (id != 105) {
+            RoutineNotifications.showReminder(context, id, title, baseMessage)
+            return
+        }
+        val pending = goAsync()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            var message = baseMessage
+            try {
+                val client = androidx.health.connect.client.HealthConnectClient.getOrCreate(context)
+                val granted = client.permissionController.getGrantedPermissions()
+                if (granted.containsAll(HealthConnectRepository.permissions)) {
+                    val report = HealthConnectRepository.loadToday(context)
+                    message = buildString {
+                        append("Steps: ").append(report.steps?.toString() ?: "not shared")
+                        append(" · Sleep: ").append(report.sleepHours?.let { String.format("%.1f h", it) } ?: "not shared")
+                        append(" · Workouts: ").append(report.workouts?.toString() ?: "not shared")
+                        append(" · Active energy: ").append(report.activeCalories?.let { String.format("%.0f kcal", it) } ?: "not shared")
+                        if (report.missingSources.isNotEmpty()) append(". Missing: ").append(report.missingSources.distinct().joinToString())
+                    }
+                } else {
+                    message = "Your daily report is ready, but Health Connect access is not configured. Open IRON WILL and connect your health data to see the full summary."
+                }
+            } catch (_: Exception) {
+                message = "Your daily report is ready. Open IRON WILL to refresh the latest health data."
+            }
+            RoutineNotifications.showReminder(context, id, title, message)
+            pending.finish()
+        }
     }
 }
 
