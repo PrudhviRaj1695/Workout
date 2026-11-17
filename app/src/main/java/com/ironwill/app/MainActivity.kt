@@ -1,6 +1,10 @@
 package com.ironwill.app
 
 import android.os.Bundle
+import android.Manifest
+import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
@@ -28,6 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 private val Bg = Color(0xFF080A0D)
 private val Panel = Color(0xFF141920)
@@ -97,7 +104,7 @@ fun IronWillApp() {
                             Tab.Home -> HomeScreen(onStart = { showWorkout = true }, onMissions = { tab = Tab.Missions })
                             Tab.Missions -> MissionsScreen(onStart = { showWorkout = true })
                             Tab.Coach -> CoachScreen(personality, { personality = it }, language, { language = it })
-                            Tab.Insights -> InsightsScreen()
+                            Tab.Insights -> DailyReportScreen()
                             Tab.Profile -> ProfileScreen(language, { language = it })
                         }
                     }
@@ -312,13 +319,41 @@ private fun InsightsScreen() {
 
 @Composable
 private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
+    val context = LocalContext.current
+    val notificationsOn = remember { mutableStateOf(RoutineNotifications.isEnabled(context)) }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { Header("System Profile", "CONFIGURATION & DATA SOURCES") }
+        item { Header("System Profile", "ROUTINE, NOTIFICATIONS & DATA SOURCES") }
         item {
-            Column(Modifier.padding(18.dp).clip(RoundedCornerShape(22.dp)).background(Panel).padding(18.dp)) {
-                Text("HEALTH DATA", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                Text("Health Connect integration is not active in this first build.", color = White, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
-                Text("Step counts, sleep and weight remain blank until a real data source is connected.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
+            Column(Modifier.padding(18.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Panel).padding(18.dp)) {
+                Text("DAILY NOTIFICATIONS", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                Text("Morning readiness, movement breaks, hydration, your training window and the daily health report.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
+                Text(if (notificationsOn.value) "DAILY ROUTINE: ACTIVE" else "DAILY ROUTINE: OFF", color = if (notificationsOn.value) Green else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                Button(
+                    onClick = {
+                        if (notificationsOn.value) {
+                            RoutineNotifications.cancelAll(context)
+                            notificationsOn.value = false
+                        } else {
+                            RoutineNotifications.scheduleDaily(context)
+                            notificationsOn.value = true
+                            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                (context as? Activity)?.let { ActivityCompat.requestPermissions(it, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9101) }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (notificationsOn.value) Raised else Orange)
+                ) {
+                    Icon(if (notificationsOn.value) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive, contentDescription = null)
+                    Text(if (notificationsOn.value) "TURN OFF REMINDERS" else "ENABLE DAILY REMINDERS", color = if (notificationsOn.value) White else Bg, fontWeight = FontWeight.Bold)
+                }
+                Text("Default routine: 7:15 AM readiness · 10:00 AM walk · 1:00 PM hydration · 5:00 PM training · 10:00 PM report. Android battery controls may delay delivery.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 18.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Panel).padding(18.dp)) {
+                Text("HEALTH CONNECT", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                Text("Open Daily Health Report and connect Health Connect to read real steps, distance, calories, sleep, weight and exercise records.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
             }
         }
         item {
@@ -328,9 +363,7 @@ private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
                 listOf("English", "తెలుగు").forEach { lang -> FilterChip(selected = language == lang, onClick = { onLanguage(lang) }, label = { Text(lang) }, modifier = Modifier.padding(end = 8.dp)) }
             }
         }
-        item {
-            Text("IRON WILL · VERSION 1.0.0", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(22.dp))
-        }
+        item { Text("IRON WILL · VERSION 1.1.0", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(22.dp)) }
     }
 }
 
