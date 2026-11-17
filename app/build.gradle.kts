@@ -34,5 +34,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+    implementation("androidx.health.connect:connect-client:1.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
