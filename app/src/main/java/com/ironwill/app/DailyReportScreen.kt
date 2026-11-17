@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
+import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.launch
 
@@ -48,11 +50,27 @@ fun DailyReportScreen() {
         }
     }
 
+    val backgroundPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { _ -> scope.launch { refresh() } }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { grants ->
         connected = grants.containsAll(HealthConnectRepository.permissions)
-        if (connected) scope.launch { refresh() }
+        if (connected) scope.launch {
+            val client = HealthConnectClient.getOrCreate(context)
+            val backgroundFeature = client.features.getFeatureStatus(
+                HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND
+            ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+            val backgroundPermission = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
+            val alreadyGranted = client.permissionController.getGrantedPermissions().contains(backgroundPermission)
+            if (backgroundFeature && !alreadyGranted) {
+                backgroundPermissionLauncher.launch(setOf(backgroundPermission))
+            } else {
+                refresh()
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -103,6 +121,11 @@ fun DailyReportScreen() {
                     ReportMetric("STEPS", r.steps?.toString() ?: "—", Modifier.weight(1f))
                     ReportMetric("DISTANCE", r.distanceKm?.let { String.format("%.2f km", it) } ?: "—", Modifier.weight(1f))
                     ReportMetric("ACTIVE KCAL", r.activeCalories?.let { String.format("%.0f", it) } ?: "—", Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(Modifier.padding(horizontal = 18.dp).padding(top = 8.dp)) {
+                    ReportMetric("TOTAL KCAL", r.totalCaloriesBurned?.let { String.format("%.0f", it) } ?: "—", Modifier.fillMaxWidth())
                 }
             }
             item { ReportSectionTitle("RECOVERY & TRAINING") }
