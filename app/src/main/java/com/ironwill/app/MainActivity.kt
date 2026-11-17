@@ -5,6 +5,10 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
+import android.Manifest
+import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
@@ -32,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -228,8 +235,47 @@ private fun Metric(label: String, value: String) {
 
 @Composable
 private fun MissionsScreen(onStart: () -> Unit) {
+    val context = LocalContext.current
+    var wakeHour by remember { mutableIntStateOf(RoutineNotifications.savedWakeHour(context)) }
+    var sleepHour by remember { mutableIntStateOf(RoutineNotifications.savedSleepHour(context)) }
+    fun timeLabel(hour: Int, minute: Int = 0): String {
+        val h = if (hour % 12 == 0) 12 else hour % 12
+        return String.format("%d:%02d %s", h, minute, if (hour < 12) "AM" else "PM")
+    }
+    val schedule = listOf(
+        Triple(timeLabel(wakeHour, 15), "Morning readiness", "Sleep, energy and movement check-in"),
+        Triple(timeLabel((wakeHour + 3) % 24), "Movement break", "Short comfortable walk"),
+        Triple(timeLabel((wakeHour + 6) % 24), "Hydration check", "Pause and drink water"),
+        Triple(timeLabel((sleepHour - 6 + 24) % 24), "Training window", "Strength or planned cardio session"),
+        Triple(timeLabel((sleepHour - 1 + 24) % 24), "Daily health report", "Review activity, sleep and training")
+    )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { Header("Mission Control", "SMALL ACTIONS. COMPOUNDED DAILY.") }
+        item { Header("Mission Control", "YOUR DAY, PLANNED AROUND YOUR ROUTINE") }
+        item {
+            Column(Modifier.padding(horizontal = 18.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Panel).padding(17.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AUTO-GENERATED DAILY SCHEDULE", color = Orange, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                        Text("Wake ${timeLabel(wakeHour)} · Sleep ${timeLabel(sleepHour)}", color = White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 7.dp))
+                    }
+                    Icon(Icons.Default.CalendarMonth, tint = Orange, contentDescription = "Daily schedule")
+                }
+                schedule.forEach { item ->
+                    Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(item.first, color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(78.dp))
+                        Column {
+                            Text(item.second, color = White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(item.third, color = Muted, fontSize = 11.sp)
+                        }
+                    }
+                }
+                Button(onClick = { RoutineNotifications.scheduleDaily(context, wakeHour, sleepHour) }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp), colors = ButtonDefaults.buttonColors(containerColor = Orange)) {
+                    Icon(Icons.Default.NotificationsActive, contentDescription = null)
+                    Text("BUILD SCHEDULE & ENABLE REMINDERS", color = Bg, fontWeight = FontWeight.Bold)
+                }
+                Text("Reminder timing is approximate because Android may batch alarms to save battery. Adjust wake and sleep times in Profile.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
         val missions = listOf(
             Triple("Morning movement", "10 min · Easy", "Prime joints and raise alertness"),
             Triple("Walking target", "Build through the day", "Accumulate comfortable movement"),
@@ -321,12 +367,18 @@ private fun InsightsScreen() {
 private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
     val context = LocalContext.current
     val notificationsOn = remember { mutableStateOf(RoutineNotifications.isEnabled(context)) }
+    var wakeHour by remember { mutableIntStateOf(RoutineNotifications.savedWakeHour(context)) }
+    var sleepHour by remember { mutableIntStateOf(RoutineNotifications.savedSleepHour(context)) }
+    fun hourLabel(hour: Int): String {
+        val h = if (hour % 12 == 0) 12 else hour % 12
+        return String.format("%d:00 %s", h, if (hour < 12) "AM" else "PM")
+    }
     LazyColumn(Modifier.fillMaxSize()) {
         item { Header("System Profile", "ROUTINE, NOTIFICATIONS & DATA SOURCES") }
         item {
             Column(Modifier.padding(18.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Panel).padding(18.dp)) {
                 Text("DAILY NOTIFICATIONS", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                Text("Morning readiness, movement breaks, hydration, your training window and the daily health report.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
+                Text("Morning readiness, movement breaks, hydration, training and the daily health report.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
                 Text(if (notificationsOn.value) "DAILY ROUTINE: ACTIVE" else "DAILY ROUTINE: OFF", color = if (notificationsOn.value) Green else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                 Button(
                     onClick = {
@@ -334,7 +386,7 @@ private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
                             RoutineNotifications.cancelAll(context)
                             notificationsOn.value = false
                         } else {
-                            RoutineNotifications.scheduleDaily(context)
+                            RoutineNotifications.scheduleDaily(context, wakeHour, sleepHour)
                             notificationsOn.value = true
                             if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                                 (context as? Activity)?.let { ActivityCompat.requestPermissions(it, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9101) }
@@ -347,13 +399,24 @@ private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
                     Icon(if (notificationsOn.value) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive, contentDescription = null)
                     Text(if (notificationsOn.value) "TURN OFF REMINDERS" else "ENABLE DAILY REMINDERS", color = if (notificationsOn.value) White else Bg, fontWeight = FontWeight.Bold)
                 }
-                Text("Default routine: 7:15 AM readiness · 10:00 AM walk · 1:00 PM hydration · 5:00 PM training · 10:00 PM report. Android battery controls may delay delivery.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 10.dp))
+                Divider(color = Raised, modifier = Modifier.padding(vertical = 16.dp))
+                Text("WAKE-UP TIME · ${hourLabel(wakeHour)}", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Slider(value = wakeHour.toFloat(), onValueChange = { wakeHour = it.toInt() }, valueRange = 5f..10f, steps = 4, colors = SliderDefaults.colors(thumbColor = Orange, activeTrackColor = Orange))
+                Text("BEDTIME · ${hourLabel(sleepHour)}", color = White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Slider(value = sleepHour.toFloat(), onValueChange = { sleepHour = it.toInt() }, valueRange = 20f..23f, steps = 2, colors = SliderDefaults.colors(thumbColor = Orange, activeTrackColor = Orange))
+                OutlinedButton(onClick = {
+                    RoutineNotifications.scheduleDaily(context, wakeHour, sleepHour)
+                    notificationsOn.value = true
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("SAVE & REBUILD MY DAILY SCHEDULE", color = Orange, fontWeight = FontWeight.Bold)
+                }
+                Text("IRON WILL places reminders around your wake and bedtime. Android may delay inexact alarms to preserve battery.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 10.dp))
             }
         }
         item {
             Column(Modifier.padding(horizontal = 18.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Panel).padding(18.dp)) {
                 Text("HEALTH CONNECT", color = Orange, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                Text("Open Daily Health Report and connect Health Connect to read real steps, distance, calories, sleep, weight and exercise records.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
+                Text("Connect Health Connect from Daily Health Report to read real steps, distance, calories, sleep, weight and exercise records.", color = White, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
             }
         }
         item {
@@ -363,7 +426,7 @@ private fun ProfileScreen(language: String, onLanguage: (String) -> Unit) {
                 listOf("English", "తెలుగు").forEach { lang -> FilterChip(selected = language == lang, onClick = { onLanguage(lang) }, label = { Text(lang) }, modifier = Modifier.padding(end = 8.dp)) }
             }
         }
-        item { Text("IRON WILL · VERSION 1.1.0", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(22.dp)) }
+        item { Text("IRON WILL · VERSION 1.2.0", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(22.dp)) }
     }
 }
 
